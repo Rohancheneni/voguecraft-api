@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
+const path = require('path');
 const FormData = require('form-data');
 const axios = require('axios');
 const cors = require('cors');
@@ -15,6 +16,7 @@ const MODEL_URL = process.env.MODEL_URL || '';
 const MOCK_IMAGE_PATH = process.env.MOCK_IMAGE_PATH || './mock-samples/sample1.png';
 const PORT = process.env.PORT || 3000;
 
+app.get('/', (req, res) => res.status(404).send('Cannot GET /'));
 app.get('/healthz', (req, res) => res.json({ ok: true, mode: MODE }));
 
 function logError(err) {
@@ -24,15 +26,19 @@ function logError(err) {
 app.post('/api/generate', upload.fields([{name:'person'},{name:'cloth'}]), async (req, res) => {
   try {
     if (MODE === 'MOCK') {
-      if (!fs.existsSync(MOCK_IMAGE_PATH)) {
-        return res.status(500).json({ ok:false, error: 'Mock image not found: ' + MOCK_IMAGE_PATH });
+      const resolved = path.resolve(process.cwd(), MOCK_IMAGE_PATH);
+      console.log('DEBUG: MODE=MOCK, MOCK_IMAGE_PATH=', MOCK_IMAGE_PATH, 'resolved=', resolved);
+      if (!fs.existsSync(resolved)) {
+        console.error('DEBUG: mock image missing at', resolved);
+        return res.status(500).json({ ok:false, error: 'Mock image not found: ' + resolved });
       }
-      const stat = fs.statSync(MOCK_IMAGE_PATH);
+      const stat = fs.statSync(resolved);
+      console.log('DEBUG: streaming mock image size=', stat.size, 'bytes');
       res.writeHead(200, {
         'Content-Type': 'image/png',
         'Content-Length': stat.size
       });
-      fs.createReadStream(MOCK_IMAGE_PATH).pipe(res);
+      fs.createReadStream(resolved).pipe(res);
       return;
     }
 
