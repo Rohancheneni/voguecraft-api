@@ -1,37 +1,51 @@
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
-const path = require('path');
 const FormData = require('form-data');
 const axios = require('axios');
 const cors = require('cors');
+const path = require('path');
 
-const upload = multer({ dest: '/tmp' });
 const app = express();
+app.use(cors());
 
-app.use(cors({ origin: ['https://voguecraft-site-zkxp4c8m2-rohan-chenenis-projects.vercel.app','https://voguecraft.io','http://localhost:8000','*'] }));
+const upload = multer({ dest: 'uploads/' });
 
-const MODE = (process.env.MODE || 'MOCK').toUpperCase();
-const MODEL_URL = process.env.MODEL_URL || '';
-const MOCK_IMAGE_PATH = process.env.MOCK_IMAGE_PATH || './mock-samples/sample1.png';
-const PORT = process.env.PORT || 3000;
-
-app.get('/', (req, res) => res.status(404).send('Cannot GET /'));
-app.get('/healthz', (req, res) => res.json({ ok: true, mode: MODE }));
+const PORT = process.env.PORT || 8080;
+const MODE = process.env.MODE || 'MOCK';
+const MOCK_IMAGE_PATH = process.env.MOCK_IMAGE_PATH || 'mock-samples/sample1.png';
+const MODEL_URL = process.env.MODEL_URL || null;
 
 function logError(err) {
-  console.error('ERROR:', err && (err.stack || err.message || err));
+  console.error('ERROR:', err && err.stack ? err.stack : err);
 }
 
-app.post('/api/generate', upload.fields([{name:'person'},{name:'cloth'}]), async (req, res) => {
+// Debug logs on startup
+console.log('DEBUG: starting server...');
+console.log('DEBUG: MODE=', MODE);
+console.log('DEBUG: MOCK_IMAGE_PATH=', MOCK_IMAGE_PATH);
+console.log('DEBUG: __dirname=', __dirname);
+console.log('DEBUG: process.cwd()=', process.cwd());
+
+app.get('/', (req, res) => {
+  res.send('VogueCraft API is running 🚀');
+});
+
+app.get('/healthz', (req, res) => {
+  res.json({ ok: true, mode: MODE });
+});
+
+app.post('/api/generate', upload.fields([{ name: 'person' }, { name: 'cloth' }]), async (req, res) => {
   try {
     if (MODE === 'MOCK') {
-      const resolved = path.resolve(process.cwd(), MOCK_IMAGE_PATH);
-      console.log('DEBUG: MODE=MOCK, MOCK_IMAGE_PATH=', MOCK_IMAGE_PATH, 'resolved=', resolved);
+      const resolved = path.resolve(__dirname, MOCK_IMAGE_PATH);
+      console.log('DEBUG: resolved mock image path =', resolved);
+
       if (!fs.existsSync(resolved)) {
-        console.error('DEBUG: mock image missing at', resolved);
-        return res.status(500).json({ ok:false, error: 'Mock image not found: ' + resolved });
+        console.error('DEBUG: mock image not found at', resolved);
+        return res.status(500).json({ ok: false, error: 'Mock image not found: ' + resolved });
       }
+
       const stat = fs.statSync(resolved);
       console.log('DEBUG: streaming mock image size=', stat.size, 'bytes');
       res.writeHead(200, {
@@ -43,10 +57,10 @@ app.post('/api/generate', upload.fields([{name:'person'},{name:'cloth'}]), async
     }
 
     if (!MODEL_URL) {
-      return res.status(500).json({ ok:false, error: 'MODEL_URL not configured' });
+      return res.status(500).json({ ok: false, error: 'MODEL_URL not configured' });
     }
     if (!req.files || !req.files.person || !req.files.cloth) {
-      return res.status(400).json({ ok:false, error: 'person and cloth files required' });
+      return res.status(400).json({ ok: false, error: 'person and cloth files required' });
     }
 
     const form = new FormData();
@@ -64,9 +78,14 @@ app.post('/api/generate', upload.fields([{name:'person'},{name:'cloth'}]), async
     res.send(Buffer.from(resp.data));
   } catch (err) {
     logError(err);
-    res.status(500).json({ ok:false, error: (err.response && err.response.data) ? err.response.data : (err.message || 'server error') });
+    res.status(500).json({
+      ok: false,
+      error: (err.response && err.response.data) ? err.response.data : (err.message || 'server error')
+    });
   } finally {
-    try { if (req && req.files) Object.values(req.files).flat().forEach(f => fs.unlinkSync(f.path)); } catch(e){}
+    try {
+      if (req && req.files) Object.values(req.files).flat().forEach(f => fs.unlinkSync(f.path));
+    } catch (e) { }
   }
 });
 
@@ -82,3 +101,4 @@ process.on('unhandledRejection', (reason) => {
 app.listen(PORT, () => {
   console.log('Listening on', PORT, 'MODE=', MODE);
 });
+
